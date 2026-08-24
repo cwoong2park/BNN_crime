@@ -1,1 +1,8 @@
-pip install pandas shapely streamlit folium streamlit-folium plotly dash geopandas
+pandas
+shapely
+streamlit
+folium
+streamlit-folium
+plotly
+dash
+geopandas
