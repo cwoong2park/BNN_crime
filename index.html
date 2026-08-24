@@ -2,116 +2,81 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Crime Prediction with Uncertainty in Birmingham</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; height: 100vh; }
-    header { background-color: #1e293b; color: #ffffff; padding: 1rem 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    header h1 { font-size: 1.4rem; font-weight: 600; }
-    header p { font-size: 0.875rem; color: #94a3b8; margin-top: 0.25rem; }
+    body { margin: 0; padding: 0; font-family: system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; }
+    header { background: #0f172a; color: white; padding: 12px 20px; }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    header p { margin: 4px 0 0; font-size: 0.85rem; color: #94a3b8; }
     #map { flex: 1; width: 100%; }
-    .legend { background: white; padding: 10px; line-height: 1.5; border-radius: 5px; box-shadow: 0 0 15px rgba(0,0,0,0.2); font-size: 12px; }
-    .legend i { width: 12px; height: 12px; display: inline-block; margin-right: 5px; border-radius: 50%; }
+    .legend { background: white; padding: 10px 14px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); line-height: 1.5; font-size: 12px; }
+    .legend i { width: 18px; height: 4px; display: inline-block; vertical-align: middle; margin-right: 6px; }
   </style>
 </head>
 <body>
-
   <header>
     <h1>Crime Prediction with Uncertainty in Birmingham</h1>
-    <p>Visualizing spatial risk probability and 95% confidence intervals across West Midlands sectors</p>
+    <p>Click road segments to inspect mean crime predictions, 95% confidence intervals, and urban spatial attributes.</p>
   </header>
-
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Initialize map centered on Birmingham, UK
     const map = L.map('map').setView([52.4800, -1.8900], 13);
-
-    // Add OpenStreetMap Tile Layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
+      maxZoom: 19, attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // Mock crime prediction data with spatial uncertainty (radius = spatial error / standard deviation)
-    const predictions = [
-      {
-        location: "City Centre / Bullring",
-        lat: 52.4777, lng: -1.8943,
-        risk: "High Risk", probability: "84%", uncertainty: "±18%",
-        uncertaintyRadius: 350, color: "#ef4444"
-      },
-      {
-        location: "Jewellery Quarter",
-        lat: 52.4871, lng: -1.9100,
-        risk: "Moderate Risk", probability: "52%", uncertainty: "±22%",
-        uncertaintyRadius: 450, color: "#f59e0b"
-      },
-      {
-        location: "Digbeth",
-        lat: 52.4750, lng: -1.8820,
-        risk: "High Risk", probability: "76%", uncertainty: "±12%",
-        uncertaintyRadius: 280, color: "#ef4444"
-      },
-      {
-        location: "Edgbaston",
-        lat: 52.4630, lng: -1.9210,
-        risk: "Low Risk", probability: "28%", uncertainty: "±9%",
-        uncertaintyRadius: 200, color: "#10b981"
-      },
-      {
-        location: "Aston",
-        lat: 52.5000, lng: -1.8850,
-        risk: "Moderate Risk", probability: "61%", uncertainty: "±25%",
-        uncertaintyRadius: 500, color: "#f59e0b"
-      }
-    ];
+    function getColor(d) {
+      return d > 5.0 ? '#dc2626' :
+             d > 1.0 ? '#f59e0b' :
+             d > 0.0 ? '#3b82f6' : '#10b981';
+    }
 
-    // Plot prediction markers and uncertainty bounds
-    predictions.forEach(p => {
-      // 1. Draw uncertainty buffer zone (outer circle)
-      L.circle([p.lat, p.lng], {
-        color: p.color,
-        fillColor: p.color,
-        fillOpacity: 0.15,
-        radius: p.uncertaintyRadius,
-        dashArray: '4, 4',
-        weight: 1.5
-      }).addTo(map);
+    fetch('crime_roads.geojson')
+      .then(res => res.json())
+      .then(data => {
+        const layer = L.geoJSON(data, {
+          style: feature => ({
+            color: getColor(feature.properties.pred_crime),
+            weight: feature.properties.pred_crime > 1 ? 5 : 3,
+            opacity: 0.85
+          }),
+          onEachFeature: (feature, layer) => {
+            const p = feature.properties;
+            layer.bindPopup(`
+              <div style="font-size:13px; line-height:1.4;">
+                <strong style="font-size:14px;">Road Segment #${p.road_id}</strong><hr style="margin:4px 0;">
+                <b>Predicted Monthly Crime:</b> ${p.pred_crime} / mo<br>
+                <b>95% CI (Uncertainty):</b> [${p.ci_lower}, ${p.ci_upper}] (±${p.ci_margin})<br>
+                <b>Total Recorded Crime:</b> ${p.total_crime}<br>
+                <br><b>Crime Breakdown:</b><br>
+                • Violence/Sexual: ${p.violence}<br>
+                • Anti-Social: ${p.anti_social}<br>
+                • Theft: ${p.theft}<br>
+                • Drugs: ${p.drugs}<br>
+                <br><b>Urban Spatial Data:</b><br>
+                • IMD Deprivation Decile: ${p.imd_deci}/10<br>
+                • Crime Decile: ${p.cri_deci}/10<br>
+                • Max Speed: ${p.maxspeed} mph<br>
+                • Building Count: ${p.build_count}
+              </div>
+            `);
+          }
+        }).addTo(map);
+        map.fitBounds(layer.getBounds());
+      });
 
-      // 2. Draw point centroid marker
-      const marker = L.circleMarker([p.lat, p.lng], {
-        color: '#ffffff',
-        fillColor: p.color,
-        fillOpacity: 0.9,
-        radius: 8,
-        weight: 2
-      }).addTo(map);
-
-      // Bind interactive tooltip popup
-      marker.bindPopup(`
-        <div style="font-size: 13px;">
-          <strong style="font-size: 14px; display: block; margin-bottom: 4px;">${p.location}</strong>
-          <b>Predicted Risk:</b> ${p.risk}<br>
-          <b>Probability:</b> ${p.probability}<br>
-          <b>Spatial Uncertainty:</b> ${p.uncertainty} (${p.uncertaintyRadius}m radius)
-        </div>
-      `);
-    });
-
-    // Add map legend
     const legend = L.control({ position: 'bottomright' });
     legend.onAdd = function () {
       const div = L.DomUtil.create('div', 'legend');
       div.innerHTML = `
-        <strong>Risk Levels</strong><br>
-        <i style="background: #ef4444;"></i> High Risk<br>
-        <i style="background: #f59e0b;"></i> Moderate Risk<br>
-        <i style="background: #10b981;"></i> Low Risk<br>
-        <small style="color: #666; display: block; margin-top: 4px;">Dashed rings = Uncertainty bound</small>
+        <strong>Predicted Monthly Crime</strong><br>
+        <i style="background:#dc2626;"></i> High (&gt; 5.0)<br>
+        <i style="background:#f59e0b;"></i> Moderate (1.0 - 5.0)<br>
+        <i style="background:#3b82f6;"></i> Low (0.1 - 1.0)<br>
+        <i style="background:#10b981;"></i> Minimal (0.0)
       `;
       return div;
     };
