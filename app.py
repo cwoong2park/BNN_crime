@@ -252,9 +252,9 @@ with col_right:
     # 빨간색 히스토그램 시각화
     fig_hist = px.histogram(
         df_hist,
-        x="obs_samples",
+        x="Samples of daily crime frequency",
         nbins=30,
-        title=f"Sample outputs from BNN for daily crime frequency prediction (Road ID: {test_row['road_id']})",
+        title=f"BNN output for the daily crime frequency prediction (Road ID: {test_row['road_id']})",
         color_discrete_sequence=["#E74C3C"],
     )
     fig_hist.update_layout(
