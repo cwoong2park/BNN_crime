@@ -172,7 +172,7 @@ with col_left:
   # Map legend
   legend_html = """
   <div style="position: fixed;
-              bottom: 30px; left: 30px; width: 190px;
+              bottom: 30px; left: 30px; width: 210px;
               background-color: white; border: 2px solid grey;
               z-index: 9999; font-size: 12px; padding: 10px;
               box-shadow: 0 0 6px rgba(0,0,0,0.3);">
