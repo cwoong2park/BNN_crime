@@ -9,7 +9,7 @@ import streamlit as st
 from streamlit_folium import st_folium
 
 st.set_page_config(layout="wide")
-st.title("Road Geometry & Crime Data Inspector")
+st.title("Daily Crime Frequency Prediction with Uncertainty in Birmingham")
 
 
 # ----------------------------------------------------
@@ -114,7 +114,7 @@ col_left, col_right = st.columns([1, 1])
 
 # --- [좌측] 지도 영역 ---
 with col_left:
-  st.subheader("Interactive Road Map")
+  st.subheader("Probabilistic AI for Smarter and Healthier Cities: A Case Study of Crime Prediction with Uncertainty in Birmingham")
 
   # 지도 중심점 계산
   bounds = gdf_crime.total_bounds
