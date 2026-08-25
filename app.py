@@ -115,7 +115,7 @@ col_left, col_right = st.columns([1, 1])
 
 # --- [좌측] 지도 영역 ---
 with col_left:
-  st.subheader("Probabilistic AI for Smarter and Healthier Cities: A Case Study of Crime Prediction with Uncertainty in Birmingham")
+  st.subheader("Probabilistic AI for Smarter and Healthier Cities:\nA Case Study of Crime Prediction with Uncertainty in Birmingham")
 
   # 지도 중심점 계산
   bounds = gdf_crime.total_bounds
