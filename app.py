@@ -7,6 +7,7 @@ import plotly.express as px
 from shapely import wkb
 import streamlit as st
 from streamlit_folium import st_folium
+import numpy as np
 
 st.set_page_config(layout="wide")
 st.title("Daily Crime Frequency Prediction with Uncertainty in Birmingham")
@@ -261,6 +262,11 @@ with col_right:
         bargap=0.1, xaxis_title="obs_samples", yaxis_title="Count"
     )
     st.plotly_chart(fig_hist, use_container_width=True)
+    
+    q1, q3 = np.percentile(obs_samples_list, [25, 75])
+    if q3 - q1 > 0.5:
+      st.warning("Uncertainty >= 0.5)")
+  
   except Exception as e:
     st.warning(f"obs_samples 데이터를 불러올 수 없습니다: {e}")
 
