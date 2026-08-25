@@ -177,16 +177,16 @@ with col_left:
               box-shadow: 0 0 6px rgba(0,0,0,0.3);">
     <b>Map Legend</b><br>
     <i style="background:#2b83ba; width:16px; height:12px; display:inline-block;"></i>
-    &nbsp;Crime count: 0<br>
+    &nbsp; Monthly Crime count: 0<br>
     <i style="background:#abdda4; width:16px; height:12px; display:inline-block;"></i>
-    &nbsp;Crime count: &gt; 0–&lt; 3<br>
+    &nbsp; Monthly Crime count: &gt; 0–&lt; 3<br>
     <i style="background:#fdae61; width:16px; height:12px; display:inline-block;"></i>
-    &nbsp;Crime count: 3–&lt; 5<br>
+    &nbsp; Monthly Crime count: 3–&lt; 5<br>
     <i style="background:#d7191c; width:16px; height:12px; display:inline-block;"></i>
-    &nbsp;Crime count: ≥ 5<br>
+    &nbsp; Monthly Crime count: ≥ 5<br>
     <hr style="margin:6px 0;">
     <span style="border-top:3px dashed #FF3333; width:16px; display:inline-block;"></span>
-    &nbsp;Test roads
+    &nbsp;Test set roads
   </div>
   """
   m.get_root().html.add_child(folium.Element(legend_html))
