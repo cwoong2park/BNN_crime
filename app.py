@@ -1,111 +1,242 @@
-import streamlit as st
-import pandas as pd
-import geopandas as gpd
-from shapely.wkt import loads
+import ast
+import json
 import folium
-from streamlit_folium import st_folium
+import geopandas as gpd
+import pandas as pd
 import plotly.express as px
+from shapely import wkb
+import streamlit as st
+from streamlit_folium import st_folium
 
 st.set_page_config(layout="wide")
+st.title("Road Geometry & Crime Data Inspector")
+
+
+# ----------------------------------------------------
+# 1. 데이터 로드 및 GeoDataFrame 변환 함수
+# ----------------------------------------------------
+@st.cache_data
+def load_crime_roads(geojson_path):
+  """crime_roads.geojson 로드 및 정규화"""
+  with open(geojson_path, "r", encoding="utf-8") as f:
+    geojson_data = json.load(f)
+
+  gdf = gpd.GeoDataFrame.from_features(
+      geojson_data["features"], crs="EPSG:4326"
+  )
+
+  # 컬럼명 표준화
+  rename_dict = {
+      "maxspeed": "max_speed",
+      "imd_deci": "imd_decile",
+      "cri_deci": "cri_decile",
+  }
+  gdf = gdf.rename(columns={k: v for k, v in rename_dict.items() if k in gdf})
+
+  if "crime_count" not in gdf.columns:
+    if "pred_crime" in gdf.columns:
+      gdf["crime_count"] = gdf["pred_crime"]
+    elif "total_crime" in gdf.columns:
+      gdf["crime_count"] = gdf["total_crime"]
+    else:
+      gdf["crime_count"] = 0.0
+
+  numeric_cols = [
+      "max_speed",
+      "imd_decile",
+      "build_count",
+      "cri_decile",
+      "crime_count",
+  ]
+  for col in numeric_cols:
+    if col in gdf.columns:
+      gdf[col] = pd.to_numeric(gdf[col], errors="coerce").fillna(0)
+      min_v = gdf[col].min()
+      max_v = gdf[col].max()
+      gdf[f"{col}_norm"] = (
+          (gdf[col] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
+      )
+
+  return gdf, numeric_cols
+
 
 @st.cache_data
-def load_geom_data():
-    df = pd.read_csv("time_testing_results_clean_withgeom.csv")
-    
-    # geometry 컬럼이 WKT 문자열 형식인 경우 처리
-    if "geometry" in df.columns:
-        if isinstance(df["geometry"].iloc[0], str):
-            df["geometry"] = df["geometry"].apply(loads)
-        gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:4326")
-    else:
-        gdf = df
-    return gdf
+def load_test_roads(csv_path):
+  """time_testing_results_clean_withgeom.csv WKB 파싱 및 EPSG:4326 변환"""
+  df = pd.read_csv(csv_path)
 
-# 데이터 로드
-try:
-    gdf = load_geom_data()
-except Exception as e:
-    st.error(f"데이터를 로드하는 중 오류가 발생했습니다: {e}")
-    st.stop()
+  # road_id 중복 제거
+  df_unique = df.drop_duplicates(subset=["road_id"]).copy()
 
-# 레이아웃 구성 (좌측: 지도, 우측: 차트)
-col_left, col_right = st.columns([6, 4])
+  # WKB 16진수 문자열 -> Shapely Geometry 변환
+  geoms = []
+  for g in df_unique["geom"]:
+    try:
+      geoms.append(wkb.loads(bytes.fromhex(str(g))))
+    except Exception:
+      geoms.append(None)
 
-# -----------------------------------------------------------------------------
-# 좌측: 지도 (Road Geometries 표시)
-# -----------------------------------------------------------------------------
+  # EPSG:27700 (British National Grid) -> EPSG:4326 (WGS84)
+  gdf_test = gpd.GeoDataFrame(
+      df_unique, geometry=geoms, crs="EPSG:27700"
+  ).to_crs(epsg=4326)
+  return gdf_test
+
+
+# 데이터 읽기
+gdf_crime, numeric_cols = load_crime_roads("crime_roads.geojson")
+gdf_test = load_test_roads("time_testing_results_clean_withgeom.csv")
+
+
+# ----------------------------------------------------
+# 2. Spectral 색상 지정 함수 (기존 crime_roads용)
+# ----------------------------------------------------
+def get_spectral_color(val):
+  try:
+    val = float(val)
+  except (ValueError, TypeError):
+    val = 0.0
+
+  if val >= 5.0:
+    return "#d7191c"
+  elif val >= 3.0:
+    return "#fdae61"
+  elif val > 0.0:
+    return "#abdda4"
+  else:
+    return "#2b83ba"
+
+
+# ----------------------------------------------------
+# 3. Streamlit 레이아웃
+# ----------------------------------------------------
+col_left, col_right = st.columns([1, 1])
+
+# --- [좌측] 지도 영역 ---
 with col_left:
-    st.subheader("Road Geometries Map")
-    
-    # 지도 중심 설정
-    bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
-    center_lat = (bounds[1] + bounds[3]) / 2
-    center_lon = (bounds[0] + bounds[2]) / 2
-    
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=12, tiles="CartoDB positron")
-    
-    # 1. 그림자(Shadow) 효과 라인
-    folium.GeoJson(
-        gdf,
-        style_function=lambda feature: {
-            'color': '#2C3E50',
-            'weight': 6,
-            'opacity': 0.4,
-        },
-        name="Road Shadow"
-    ).add_to(m)
-    
-    # 2. 메인 점선(Dashed) 스타일 라인
-    folium.GeoJson(
-        gdf,
-        style_function=lambda feature: {
-            'color': '#E74C3C',
-            'weight': 3,
-            'opacity': 0.9,
-            'dashArray': '6, 6'
-        },
-        tooltip=folium.GeoJsonTooltip(fields=[col for col in ['id', 'obs_samples'] if col in gdf.columns]),
-        name="Test Roads"
-    ).add_to(m)
+  st.subheader("Interactive Road Map")
 
-    st_folium(m, width=None, height=700, use_container_width=True)
+  # 지도 중심점 계산
+  bounds = gdf_crime.total_bounds
+  center_lat = (bounds[1] + bounds[3]) / 2
+  center_lon = (bounds[0] + bounds[2]) / 2
 
-# -----------------------------------------------------------------------------
-# 우측: 시각화 차트 영역
-# -----------------------------------------------------------------------------
+  m = folium.Map(location=[center_lat, center_lon], zoom_start=13)
+
+  # 1) 기존 crime_roads 일반 레이어
+  folium.GeoJson(
+      gdf_crime,
+      name="Crime Roads",
+      tooltip=folium.GeoJsonTooltip(
+          fields=["road_id", "crime_count", "max_speed", "imd_decile"],
+          aliases=["Road ID:", "Crime Count:", "Max Speed:", "IMD Decile:"],
+      ),
+      style_function=lambda feature: {
+          "color": get_spectral_color(
+              feature["properties"].get("crime_count", 0)
+          ),
+          "weight": 4,
+          "opacity": 0.7,
+      },
+  ).add_to(m)
+
+  # 2) time_testing_results 도로 레이어 (Shadow 효과 + Red Dashed 점선)
+  # Shadow 레이어 (굵은 검은색 외곽선)
+  folium.GeoJson(
+      gdf_test,
+      name="Test Roads (Shadow)",
+      style_function=lambda feature: {
+          "color": "#000000",
+          "weight": 7,
+          "opacity": 0.6,
+      },
+  ).add_to(m)
+
+  # Main 점선 레이어 (빨간색 점선)
+  folium.GeoJson(
+      gdf_test,
+      name="Test Roads (Dashed)",
+      tooltip=folium.GeoJsonTooltip(
+          fields=["road_id", "expected_rate_obs", "actual_crime_freq"],
+          aliases=["Test Road ID:", "Expected Rate:", "Actual Freq:"],
+      ),
+      style_function=lambda feature: {
+          "color": "#FF3333",
+          "weight": 3.5,
+          "opacity": 1.0,
+          "dashArray": "6, 6",
+      },
+  ).add_to(m)
+
+  map_output = st_folium(m, width=650, height=650)
+
+# --- [우측] 시각화 영역 ---
 with col_right:
-    # 1. 오른쪽 상단: Normalized Bar Chart (단색 적용)
-    st.subheader("Normalized Value Bar Chart")
-    
-    # 예시 데이터프레임 컬럼 구조에 맞춰 수정 가능 (예: 'category', 'normalized_value')
-    if "normalized_value" in gdf.columns:
-        fig_bar = px.bar(
-            gdf, 
-            x=gdf.index, 
-            y="normalized_value",
-            color_discrete_sequence=["#4682B4"]  # 단색 (SteelBlue) 설정
-        )
-        fig_bar.update_layout(
-            margin=dict(l=20, r=20, t=30, b=20),
-            xaxis_title="Index",
-            yaxis_title="Normalized Value"
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
+  # 클릭된 road_id 탐색
+  selected_road_id = None
+  if map_output and map_output.get("last_active_drawing"):
+    props = map_output["last_active_drawing"].get("properties")
+    if props:
+      selected_road_id = props.get("road_id")
 
-    # 2. 오른쪽 하단: obs_samples 빨간색 히스토그램
-    st.subheader("Observation Samples Histogram")
-    
-    if "obs_samples" in gdf.columns:
-        fig_hist = px.histogram(
-            gdf, 
-            x="obs_samples",
-            color_discrete_sequence=["#E74C3C"],  # 빨간색 단색 설정
-            nbins=30
-        )
-        fig_hist.update_layout(
-            margin=dict(l=20, r=20, t=30, b=20),
-            xaxis_title="Observation Samples",
-            yaxis_title="Count",
-            bargap=0.1
-        )
-        st.plotly_chart(fig_hist, use_container_width=True)
+  # 1) [오른쪽 상단] Normalized Bar Chart (단색 적용)
+  st.subheader("Normalized Road Characteristics")
+
+  if selected_road_id is not None and selected_road_id in gdf_crime["road_id"].values:
+    road_row = gdf_crime[gdf_crime["road_id"] == selected_road_id].iloc[0]
+  else:
+    road_row = gdf_crime.iloc[0]
+    st.info("💡 지도 위 도로를 클릭하면 해당 도로의 상세 그래프가 표시됩니다.")
+
+  chart_data = []
+  for col in numeric_cols:
+    if col in gdf_crime.columns:
+      chart_data.append(
+          {"Variable": col, "Normalized Value (0-1)": road_row[f"{col}_norm"]}
+      )
+  df_bar = pd.DataFrame(chart_data)
+
+  # 그라데이션 제거 -> 단색(Steel Blue) 바 차트
+  fig_bar = px.bar(
+      df_bar,
+      x="Variable",
+      y="Normalized Value (0-1)",
+      text_auto=".2f",
+      title=f"Road Feature Profile (Road ID: {road_row['road_id']})",
+      color_discrete_sequence=["#4682B4"],
+      range_y=[0, 1.15],
+  )
+  fig_bar.update_layout(showlegend=False)
+  st.plotly_chart(fig_bar, use_container_width=True)
+
+  # 2) [오른쪽 하단] obs_samples 빨간색 히스토그램
+  st.subheader("Observation Samples Distribution")
+
+  # 선택된 road_id가 test 세트에 포함되어 있는지 확인
+  if (
+      selected_road_id is not None
+      and selected_road_id in gdf_test["road_id"].values
+  ):
+    test_row = gdf_test[gdf_test["road_id"] == selected_road_id].iloc[0]
+  else:
+    test_row = gdf_test.iloc[0]
+
+  # obs_samples 문자열 리스트 파싱
+  try:
+    obs_samples_list = ast.literal_eval(str(test_row["obs_samples"]))
+    df_hist = pd.DataFrame({"obs_samples": obs_samples_list})
+
+    # 빨간색 히스토그램 시각화
+    fig_hist = px.histogram(
+        df_hist,
+        x="obs_samples",
+        nbins=30,
+        title=f"obs_samples Histogram (Road ID: {test_row['road_id']})",
+        color_discrete_sequence=["#E74C3C"],
+    )
+    fig_hist.update_layout(
+        bargap=0.1, xaxis_title="obs_samples", yaxis_title="Count"
+    )
+    st.plotly_chart(fig_hist, use_container_width=True)
+  except Exception as e:
+    st.warning(f"obs_samples 데이터를 불러올 수 없습니다: {e}")
